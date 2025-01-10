@@ -17,7 +17,7 @@ export function NpyViewer() {
   const [isLoading, setIsLoading] = useState(false);
   const [points, setPoints] = useState<Point[]>([]);
   const [hoveredPoint, setHoveredPoint] = useState<Point | null>(null);
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  // const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const npyDataRef = useRef<{ min: number; max: number; data: Float32Array | Float64Array }>();
   const [scale, setScale] = useState(1);
@@ -27,10 +27,10 @@ export function NpyViewer() {
     if (!texture) return;
     
     // Use exact dimensions from NPY data
-    setContainerSize({
-      width: texture.width + 50,  // Add 50px for axis
-      height: texture.height + 50
-    });
+    // setContainerSize({
+    //   width: texture.width + 50,  // Add 50px for axis
+    //   height: texture.height + 50
+    // });
     
     // Scale is 1 since we're using exact dimensions
     setScale(1);

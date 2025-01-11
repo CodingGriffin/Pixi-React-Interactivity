@@ -274,8 +274,9 @@ export function NpyViewer() {
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto p-4">
-      <div className="mb-4">
+    <div className="w-full flex flex-col items-center justify-center">
+      {/* File Input */}
+      <div className="w-full max-w-xl mb-8">
         <input
           type="file"
           accept=".npy"
@@ -289,58 +290,58 @@ export function NpyViewer() {
         />
       </div>
 
-      {texture && (
-        <div className="flex flex-col items-center">
-          {/* Input fields in a single line */}
-          <div className="flex gap-4 mb-4 items-center">
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-600">Y Max (Top Left):</label>
-              <input
-                type="number"
-                value={axisLimits.ymax}
-                onChange={(e) => handleAxisLimitChange("ymax", e.target.value)}
-                className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
-                step="any"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-600">Y Min (Bottom Left):</label>
-              <input
-                type="number"
-                value={axisLimits.ymin}
-                onChange={(e) => handleAxisLimitChange("ymin", e.target.value)}
-                className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
-                step="any"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-600">X Max (Bottom Left):</label>
-              <input
-                type="number"
-                value={axisLimits.xmax}
-                onChange={(e) => handleAxisLimitChange("xmax", e.target.value)}
-                className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
-                step="any"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-600">X Min (Bottom Right):</label>
-              <input
-                type="number"
-                value={axisLimits.xmin}
-                onChange={(e) => handleAxisLimitChange("xmin", e.target.value)}
-                className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
-                step="any"
-              />
-            </div>
-          </div>
+      {/* Axis Inputs */}
+      <div className="flex gap-4 mb-8 flex-wrap justify-center">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-600">Y Max (Top Left):</label>
+          <input
+            type="number"
+            value={axisLimits.ymax}
+            onChange={(e) => handleAxisLimitChange("ymax", e.target.value)}
+            className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
+            step="1"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-600">Y Min (Bottom Left):</label>
+          <input
+            type="number"
+            value={axisLimits.ymin}
+            onChange={(e) => handleAxisLimitChange("ymin", e.target.value)}
+            className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
+            step="1"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-600">X Max (Bottom Left):</label>
+          <input
+            type="number"
+            value={axisLimits.xmax}
+            onChange={(e) => handleAxisLimitChange("xmax", e.target.value)}
+            className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
+            step="1"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-600">X Min (Bottom Right):</label>
+          <input
+            type="number"
+            value={axisLimits.xmin}
+            onChange={(e) => handleAxisLimitChange("xmin", e.target.value)}
+            className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
+            step="1"
+          />
+        </div>
+      </div>
 
-          {/* PixiJS Component with outer container for labels */}
-          <div className="relative">
+      {texture && (
+        <div className="flex flex-col items-center justify-center">
+          {/* PixiJS Component Container */}
+          <div className="relative bg-white p-4 rounded-lg shadow-md">
             {/* Y-axis labels (left side) */}
             <div className="absolute -left-12 top-0 h-full flex flex-col justify-between">
-              <div className="text-xs">{axisLimits.ymax.toFixed(1)}</div>
-              <div className="text-xs">{axisLimits.ymin.toFixed(1)}</div>
+              <div className="text-xs">{axisLimits.ymax.toFixed(3)}</div>
+              <div className="text-xs">{axisLimits.ymin.toFixed(3)}</div>
             </div>
 
             {/* X-axis labels (bottom) */}
@@ -415,6 +416,16 @@ export function NpyViewer() {
               )}
             </div>
           </div>
+
+          {/* Controls Info */}
+          <div className="mt-8 p-4 bg-gray-50 rounded-lg w-full max-w-md">
+            <h3 className="font-semibold mb-2 text-center">Controls:</h3>
+            <ul className="space-y-1 text-sm text-gray-600 text-center">
+              <li>Shift + Click: Add point</li>
+              <li>Alt + Click: Remove point</li>
+              <li>Hover over points to see coordinates</li>
+            </ul>
+          </div>
         </div>
       )}
 
@@ -422,16 +433,9 @@ export function NpyViewer() {
         <div className="text-center py-4 text-gray-600">Loading...</div>
       )}
 
-      {error && <div className="text-center py-4 text-red-600">{error}</div>}
-
-      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-        <h3 className="font-semibold mb-2">Controls:</h3>
-        <ul className="space-y-1 text-sm text-gray-600">
-          <li>Shift + Click: Add point</li>
-          <li>Alt + Click: Remove point</li>
-          <li>Hover over points to see coordinates</li>
-        </ul>
-      </div>
+      {error && (
+        <div className="text-center py-4 text-red-600">{error}</div>
+      )}
     </div>
   );
 }

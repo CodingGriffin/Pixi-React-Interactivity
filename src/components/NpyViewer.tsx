@@ -228,35 +228,35 @@ export function NpyViewer() {
   };
 
   // Add tick marks for better visualization
-  const drawAxes = (g: Graphics) => {
-    g.clear();
-    g.lineStyle(1, 0x000000);
+  // const drawAxes = (g: Graphics) => {
+  //   g.clear();
+  //   g.lineStyle(1, 0x000000);
     
-    // Draw border
-    g.drawRect(0, 0, texture!.width, texture!.height);
+  //   // Draw border
+  //   g.drawRect(0, 0, texture!.width, texture!.height);
     
-    // Y-axis ticks (0 to 20, step by 5)
-    for (let y = 0; y <= 20; y += 5) {
-      const yPos = texture!.height - (y / 20) * texture!.height;
-      g.moveTo(-5, yPos);
-      g.lineTo(0, yPos);
-      new Text(`${y}`, {
-        fontSize: 10,
-        fill: 0x000000,
-      }).position.set(-25, yPos - 5);
-    }
+  //   // Y-axis ticks (0 to 20, step by 5)
+  //   for (let y = 0; y <= 20; y += 5) {
+  //     const yPos = texture!.height - (y / 20) * texture!.height;
+  //     g.moveTo(-5, yPos);
+  //     g.lineTo(0, yPos);
+  //     new Text(`${y}`, {
+  //       fontSize: 10,
+  //       fill: 0x000000,
+  //     }).position.set(-25, yPos - 5);
+  //   }
     
-    // X-axis ticks (0.015 to 0.030, step by 0.005)
-    for (let x = 0.015; x <= 0.030; x += 0.005) {
-      const xPos = ((x - 0.015) / 0.015) * texture!.width;
-      g.moveTo(xPos, texture!.height);
-      g.lineTo(xPos, texture!.height + 5);
-      new Text(`${x.toFixed(3)}`, {
-        fontSize: 10,
-        fill: 0x000000,
-      }).position.set(xPos - 15, texture!.height + 10);
-    }
-  };
+  //   // X-axis ticks (0.015 to 0.030, step by 0.005)
+  //   for (let x = 0.015; x <= 0.030; x += 0.005) {
+  //     const xPos = ((x - 0.015) / 0.015) * texture!.width;
+  //     g.moveTo(xPos, texture!.height);
+  //     g.lineTo(xPos, texture!.height + 5);
+  //     new Text(`${x.toFixed(3)}`, {
+  //       fontSize: 10,
+  //       fill: 0x000000,
+  //     }).position.set(xPos - 15, texture!.height + 10);
+  //   }
+  // };
 
   // Update calculateDisplayValues to convert from screen to axis coordinates
   const calculateDisplayValues = (screenX: number, screenY: number) => {

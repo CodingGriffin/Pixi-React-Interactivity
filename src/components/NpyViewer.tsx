@@ -274,8 +274,8 @@ export function NpyViewer() {
   };
 
   return (
-    <div className="w-full flex flex-col items-center justify-center">
-      {/* File Input */}
+    <div className="flex flex-col items-center">
+      {/* File Input - Fixed position */}
       <div className="w-full max-w-xl mb-8">
         <input
           type="file"
@@ -290,151 +290,164 @@ export function NpyViewer() {
         />
       </div>
 
-      {/* Axis Inputs */}
-      <div className="flex gap-4 mb-8 flex-wrap justify-center">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-600">Y Max (Top Left):</label>
-          <input
-            type="number"
-            value={axisLimits.ymax}
-            onChange={(e) => handleAxisLimitChange("ymax", e.target.value)}
-            className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
-            step="1"
-          />
+      {/* Fixed height container for the rest of the content */}
+      <div className="h-[600px] flex flex-col items-center">
+        {/* Axis Inputs */}
+        <div className="h-[52px] mb-8">
+          {texture && (
+            <div className="flex gap-4 flex-wrap justify-center">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600">Y Max (Top Left):</label>
+                <input
+                  type="number"
+                  value={axisLimits.ymax}
+                  onChange={(e) => handleAxisLimitChange("ymax", e.target.value)}
+                  className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
+                  step="1"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600">Y Min (Bottom Left):</label>
+                <input
+                  type="number"
+                  value={axisLimits.ymin}
+                  onChange={(e) => handleAxisLimitChange("ymin", e.target.value)}
+                  className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
+                  step="1"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600">X Max (Bottom Left):</label>
+                <input
+                  type="number"
+                  value={axisLimits.xmax}
+                  onChange={(e) => handleAxisLimitChange("xmax", e.target.value)}
+                  className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
+                  step="1"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600">X Min (Bottom Right):</label>
+                <input
+                  type="number"
+                  value={axisLimits.xmin}
+                  onChange={(e) => handleAxisLimitChange("xmin", e.target.value)}
+                  className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
+                  step="1"
+                />
+              </div>
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-600">Y Min (Bottom Left):</label>
-          <input
-            type="number"
-            value={axisLimits.ymin}
-            onChange={(e) => handleAxisLimitChange("ymin", e.target.value)}
-            className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
-            step="1"
-          />
+
+        {/* Viewer Container */}
+        <div className="w-[800px] h-[400px]">
+          {texture ? (
+            <div className="relative bg-white p-4 rounded-lg shadow-md">
+              {/* Y-axis labels (left side) */}
+              <div className="absolute -left-12 top-0 h-full flex flex-col justify-between">
+                <div className="text-xs">{axisLimits.ymax.toFixed(3)}</div>
+                <div className="text-xs">{axisLimits.ymin.toFixed(3)}</div>
+              </div>
+
+              {/* X-axis labels (bottom) */}
+              <div className="absolute -bottom-6 left-0 w-full flex justify-between">
+                <div className="text-xs">{axisLimits.xmax.toFixed(3)}</div>
+                <div className="text-xs">{axisLimits.xmin.toFixed(3)}</div>
+              </div>
+
+              {/* PixiJS Component */}
+              <div
+                ref={containerRef}
+                className="relative border border-gray-200 rounded-lg bg-white shadow-sm"
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+              >
+                <Application
+                  width={texture.width}
+                  height={texture.height}
+                  background="#ffffff"
+                >
+                  <pixiContainer x={0} y={0}>
+                    <pixiSprite
+                      texture={texture}
+                      x={0}
+                      y={0}
+                      width={texture.width}
+                      height={texture.height}
+                    />
+                    
+                    {/* Points */}
+                    <pixiGraphics
+                      draw={g => {
+                        g.clear();
+                        points.forEach(point => {
+                          const isHovered = hoveredPoint === point;
+                          g.beginFill(0xFF0000);
+                          g.drawCircle(point.x, point.y, isHovered ? 7 : 5);
+                          if (isHovered) {
+                            g.beginFill(0xFFFFFF, 0.8);
+                            g.drawCircle(point.x, point.y, 3);
+                          }
+                          g.endFill();
+                        });
+                      }}
+                    />
+                  </pixiContainer>
+                </Application>
+
+                {/* Tooltip */}
+                {hoveredPoint && (
+                  <div className="absolute bg-white border border-black rounded px-1.5 py-0.5 text-xs shadow-sm pointer-events-none"
+                      style={{
+                        left: hoveredPoint.x + 15,
+                        top: hoveredPoint.y - 15,
+                        zIndex: 1000
+                      }}
+                  >
+                    <div className="flex items-center gap-1">
+                      <div 
+                        className="w-3 h-3 border border-black"
+                        style={{
+                          background: "rgb(255, 0, 0)"
+                        }}
+                      />
+                      {(() => {
+                        // Calculate current axis values based on screen position
+                        const { axisX, axisY } = calculateDisplayValues(hoveredPoint.x, hoveredPoint.y);
+                        return `(${axisX.toFixed(3)}, ${axisY.toFixed(3)})`;
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </div>  
+            </div>
+          ) : (
+            <div className="w-full h-full border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+              <p className="text-gray-500">Load an NPY file to view</p>
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-600">X Max (Bottom Left):</label>
-          <input
-            type="number"
-            value={axisLimits.xmax}
-            onChange={(e) => handleAxisLimitChange("xmax", e.target.value)}
-            className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
-            step="1"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-600">X Min (Bottom Right):</label>
-          <input
-            type="number"
-            value={axisLimits.xmin}
-            onChange={(e) => handleAxisLimitChange("xmin", e.target.value)}
-            className="w-24 px-2 py-1 text-sm border rounded shadow-sm"
-            step="1"
-          />
+
+        {/* Controls Info */}
+        <div className="mt-8 p-4 bg-gray-50 rounded-lg w-full max-w-md">
+          <h3 className="font-semibold mb-2 text-center">Controls:</h3>
+          <ul className="space-y-1 text-sm text-gray-600 text-center">
+            <li>Shift + Click: Add point</li>
+            <li>Alt + Click: Remove point</li>
+            <li>Hover over points to see coordinates</li>
+          </ul>
         </div>
       </div>
 
-      {texture && (
-        <div className="flex flex-col items-center justify-center">
-          {/* PixiJS Component Container */}
-          <div className="relative bg-white p-4 rounded-lg shadow-md">
-            {/* Y-axis labels (left side) */}
-            <div className="absolute -left-12 top-0 h-full flex flex-col justify-between">
-              <div className="text-xs">{axisLimits.ymax.toFixed(3)}</div>
-              <div className="text-xs">{axisLimits.ymin.toFixed(3)}</div>
-            </div>
-
-            {/* X-axis labels (bottom) */}
-            <div className="absolute -bottom-6 left-0 w-full flex justify-between">
-              <div className="text-xs">{axisLimits.xmax.toFixed(3)}</div>
-              <div className="text-xs">{axisLimits.xmin.toFixed(3)}</div>
-            </div>
-
-            {/* PixiJS Component */}
-            <div
-              ref={containerRef}
-              className="relative border border-gray-200 rounded-lg bg-white shadow-sm"
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-            >
-              <Application
-                width={texture.width}
-                height={texture.height}
-                background="#ffffff"
-              >
-                <pixiContainer x={0} y={0}>
-                  <pixiSprite
-                    texture={texture}
-                    x={0}
-                    y={0}
-                    width={texture.width}
-                    height={texture.height}
-                  />
-                  
-                  {/* Points */}
-                  <pixiGraphics
-                    draw={g => {
-                      g.clear();
-                      points.forEach(point => {
-                        const isHovered = hoveredPoint === point;
-                        g.beginFill(0xFF0000);
-                        g.drawCircle(point.x, point.y, isHovered ? 7 : 5);
-                        if (isHovered) {
-                          g.beginFill(0xFFFFFF, 0.8);
-                          g.drawCircle(point.x, point.y, 3);
-                        }
-                        g.endFill();
-                      });
-                    }}
-                  />
-                </pixiContainer>
-              </Application>
-
-              {/* Tooltip */}
-              {hoveredPoint && (
-                <div className="absolute bg-white border border-black rounded px-1.5 py-0.5 text-xs shadow-sm pointer-events-none"
-                    style={{
-                      left: hoveredPoint.x + 15,
-                      top: hoveredPoint.y - 15,
-                      zIndex: 1000
-                    }}
-                >
-                  <div className="flex items-center gap-1">
-                    <div 
-                      className="w-3 h-3 border border-black"
-                      style={{
-                        background: "rgb(255, 0, 0)"
-                      }}
-                    />
-                    {(() => {
-                      // Calculate current axis values based on screen position
-                      const { axisX, axisY } = calculateDisplayValues(hoveredPoint.x, hoveredPoint.y);
-                      return `(${axisX.toFixed(3)}, ${axisY.toFixed(3)})`;
-                    })()}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Controls Info */}
-          <div className="mt-8 p-4 bg-gray-50 rounded-lg w-full max-w-md">
-            <h3 className="font-semibold mb-2 text-center">Controls:</h3>
-            <ul className="space-y-1 text-sm text-gray-600 text-center">
-              <li>Shift + Click: Add point</li>
-              <li>Alt + Click: Remove point</li>
-              <li>Hover over points to see coordinates</li>
-            </ul>
-          </div>
+      {isLoading && (
+        <div className="absolute inset-0 bg-white/50 flex items-center justify-center">
+          <div className="text-gray-600">Loading...</div>
         </div>
       )}
 
-      {isLoading && (
-        <div className="text-center py-4 text-gray-600">Loading...</div>
-      )}
-
       {error && (
-        <div className="text-center py-4 text-red-600">{error}</div>
+        <div className="mt-4 text-center text-red-600">{error}</div>
       )}
     </div>
   );

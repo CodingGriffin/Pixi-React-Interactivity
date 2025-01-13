@@ -1,4 +1,4 @@
-import { Container, Sprite, Texture, Graphics, Text } from "pixi.js";
+import { Container, Sprite, Texture, Graphics, Text, FederatedPointerEvent } from "pixi.js";
 import { useCallback, useState, useRef, useEffect } from "react";
 import NpyJs from "npyjs";
 import { Application, extend } from "@pixi/react";
@@ -62,78 +62,67 @@ export function NpyViewer() {
   //   return { x, y };
   // };
 
+  // Move this function before handlePointerDown
+  const calculateDisplayValues = (screenX: number, screenY: number) => {
+    if (!texture) return { axisX: 0, axisY: 0 };
+    
+    // For x: right to left (screenX = 0 maps to xmax, screenX = 800 maps to xmin)
+    const xRatio = (800 - screenX) / 800;  // Invert X direction
+    const axisX = axisLimits.xmin + xRatio * (axisLimits.xmax - axisLimits.xmin);
+    
+    // For y: bottom to top (screenY = 400 maps to ymin, screenY = 0 maps to ymax)
+    const yRatio = (400 - screenY) / 400;  // Invert Y direction
+    const axisY = axisLimits.ymin + yRatio * (axisLimits.ymax - axisLimits.ymin);
+    
+    return { axisX, axisY };
+  };
+
   // Update handlePointerDown to correctly map coordinates
-  const handlePointerDown = useCallback((event: React.PointerEvent) => {
+  const handlePointerDown = useCallback((event: FederatedPointerEvent) => {
     if (!texture) return;
-
-    const rect = (event.target as HTMLElement).getBoundingClientRect();
-    const screenX = event.clientX - rect.left;
-    const screenY = event.clientY - rect.top;
-
-    if (screenX < 0 || screenX > texture.width || screenY < 0 || screenY > texture.height) return;
-
+    
+    // Get coordinates relative to the Application
+    const bounds = event.currentTarget.getBounds();
+    const x = event.global.x - bounds.x;
+    const y = event.global.y - bounds.y;
+    
     if (event.shiftKey) {
-      // Map screen coordinates to axis values
-      // X axis: right to left
-      const xRatio = 1 - (screenX / texture.width);  // Invert X ratio
-      // Y axis: bottom to top
-      const yRatio = 1 - (screenY / texture.height); // Invert Y ratio
-      
-      // Calculate actual axis values
-      const axisX = axisLimits.xmin + (axisLimits.xmax - axisLimits.xmin) * xRatio;
-      const axisY = axisLimits.ymin + (axisLimits.ymax - axisLimits.ymin) * yRatio;
-
-      // Get color from the image data
-      const index = Math.floor(screenY) * texture.width + Math.floor(screenX);
-      const value = npyDataRef.current?.data[index] || 0;
-      
-      setPoints(prev => [...prev, { 
-        x: screenX,      // Screen coordinates for display
-        y: screenY,
-        axisX,          // Actual axis values
+      // Add point
+      const { axisX, axisY } = calculateDisplayValues(x, y);
+      const newPoint = { 
+        x, 
+        y, 
+        value: 0,
+        axisX,
         axisY,
-        value,
-        color: 255      // Red color for points
-      }]);
+        color: 0xFF0000 
+      };
+      setPoints(prev => [...prev, newPoint]);
     } else if (event.altKey) {
-      const nearestPoint = points.reduce((nearest, point) => {
-        const distance = Math.sqrt(Math.pow(point.x - screenX, 2) + Math.pow(point.y - screenY, 2));
-        return distance < nearest.distance ? { point, distance } : nearest;
-      }, { point: null as Point | null, distance: Infinity });
-
-      if (nearestPoint.point && nearestPoint.distance < 10) {
-        setPoints(prev => prev.filter(p => p !== nearestPoint.point));
-      }
+      // Remove point
+      setPoints(prev => prev.filter(point => {
+        const dx = point.x - x;
+        const dy = point.y - y;
+        return Math.sqrt(dx * dx + dy * dy) > 10;
+      }));
     }
-  }, [texture, points, axisLimits]);
+  }, [texture, calculateDisplayValues]);
 
-  const handlePointerMove = useCallback(
-    (event: React.PointerEvent) => {
-      if (!texture) return;
-
-      const rect = (event.target as HTMLElement).getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-
-      if (x < 0 || x > texture.width || y < 0 || y > texture.height) {
-        setHoveredPoint(null);
-        return;
-      }
-
-      const nearestPoint = points.reduce(
-        (nearest, point) => {
-          const distance = Math.sqrt(
-            Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2)
-          );
-          return distance < nearest.distance ? { point, distance } : nearest;
-        },
-        { point: null as Point | null, distance: Infinity }
-      );
-
-      setHoveredPoint(nearestPoint.distance < 10 ? nearestPoint.point : null);
-    },
-    [texture, points]
-  );
+  const handlePointerMove = useCallback((event: FederatedPointerEvent) => {
+    if (!texture) return;
+    
+    const bounds = event.currentTarget.getBounds();
+    const x = event.global.x - bounds.x;
+    const y = event.global.y - bounds.y;
+    
+    const hoveredPoint = points.find(point => {
+      const dx = point.x - x;
+      const dy = point.y - y;
+      return Math.sqrt(dx * dx + dy * dy) < 10;
+    });
+    
+    setHoveredPoint(hoveredPoint || null);
+  }, [points, texture]);
 
   const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
@@ -258,21 +247,6 @@ export function NpyViewer() {
   //   }
   // };
 
-  // Update calculateDisplayValues to convert from screen to axis coordinates
-  const calculateDisplayValues = (screenX: number, screenY: number) => {
-    if (!texture) return { axisX: 0, axisY: 0 };
-
-    // Calculate ratios based on screen position (fixed)
-    const xRatio = 1 - (screenX / texture.width);  // Right to left
-    const yRatio = 1 - (screenY / texture.height); // Bottom to top
-    
-    // Map to current axis limits (dynamic)
-    const axisX = axisLimits.xmin + (axisLimits.xmax - axisLimits.xmin) * xRatio;
-    const axisY = axisLimits.ymin + (axisLimits.ymax - axisLimits.ymin) * yRatio;
-    
-    return { axisX, axisY };
-  };
-
   return (
     <div className="flex flex-col items-center">
       {/* File Input - Fixed position */}
@@ -341,7 +315,7 @@ export function NpyViewer() {
         </div>
 
         {/* Viewer Container */}
-        <div className="w-[800px] h-[400px]">
+        <div>
           {texture ? (
             <div className="relative bg-white p-4 rounded-lg shadow-md">
               {/* Y-axis labels (left side) */}
@@ -360,27 +334,31 @@ export function NpyViewer() {
               <div
                 ref={containerRef}
                 className="relative border border-gray-200 rounded-lg bg-white shadow-sm"
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
               >
                 <Application
-                  width={texture.width}
-                  height={texture.height}
+                  width={800}
+                  height={400}
                   background="#ffffff"
                 >
                   <pixiContainer x={0} y={0}>
                     <pixiSprite
-                      texture={texture}
+                      texture={texture || undefined}
                       x={0}
                       y={0}
-                      width={texture.width}
-                      height={texture.height}
+                      width={800}
+                      height={400}
                     />
                     
-                    {/* Points */}
+                    {/* Points and Interactive Area */}
                     <pixiGraphics
                       draw={g => {
                         g.clear();
+                        // First draw a transparent interactive area
+                        g.beginFill(0xFFFFFF, 0);
+                        g.drawRect(0, 0, 800, 400);
+                        g.endFill();
+                        
+                        // Then draw the points
                         points.forEach(point => {
                           const isHovered = hoveredPoint === point;
                           g.beginFill(0xFF0000);
@@ -392,6 +370,9 @@ export function NpyViewer() {
                           g.endFill();
                         });
                       }}
+                      eventMode="static"
+                      onPointerDown={handlePointerDown}
+                      onPointerMove={handlePointerMove}
                     />
                   </pixiContainer>
                 </Application>
@@ -423,7 +404,7 @@ export function NpyViewer() {
               </div>  
             </div>
           ) : (
-            <div className="w-full h-full border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+            <div className="w-[800px] h-[400px] border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
               <p className="text-gray-500">Load an NPY file to view</p>
             </div>
           )}

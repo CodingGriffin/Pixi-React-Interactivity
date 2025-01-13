@@ -428,7 +428,7 @@ export function NpyViewer() {
   // Add download function
   const handleDownloadPoints = useCallback(() => {
     // Format points data
-    const pointsData = points.map(point => 
+    const pointsData = points.sort((a, b) => a.axisX - b.axisX).map(point => 
       `${point.axisX.toFixed(3)}, ${point.axisY.toFixed(3)}`
     ).join('\n');
     

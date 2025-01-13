@@ -14,6 +14,102 @@ interface Point {
   color: number;
 }
 
+// Add color map types and helper functions
+interface RGB {
+  r: number;
+  g: number;
+  b: number;
+}
+
+// Parse RGB string to RGB object
+const parseRGB = (rgbStr: string): RGB => {
+  const matches = rgbStr.match(/rgb\((\d+),(\d+),(\d+)\)/);
+  if (!matches) throw new Error('Invalid RGB string');
+  return {
+    r: parseInt(matches[1]),
+    g: parseInt(matches[2]),
+    b: parseInt(matches[3])
+  };
+};
+
+// Linear interpolation between two RGB colors
+const interpolateRGB = (color1: RGB, color2: RGB, ratio: number): RGB => {
+  return {
+    r: Math.round(color1.r + (color2.r - color1.r) * ratio),
+    g: Math.round(color1.g + (color2.g - color1.g) * ratio),
+    b: Math.round(color1.b + (color2.b - color1.b) * ratio)
+  };
+};
+
+// Get color for a normalized value using the color map
+const getColorFromMap = (normalizedValue: number, colorMap: string[]): RGB => {
+  const rgbColors = colorMap.map(parseRGB);
+  const segments = rgbColors.length - 1;
+  const segment = Math.min(Math.floor(normalizedValue * segments), segments - 1);
+  const segmentRatio = (normalizedValue * segments) - segment;
+  
+  return interpolateRGB(rgbColors[segment], rgbColors[segment + 1], segmentRatio);
+};
+
+// Update COLOR_MAPS with ColorBrewer schemes
+const COLOR_MAPS = {
+  'RdYlBu': [
+    'rgb(165,0,38)',
+    'rgb(215,48,39)',
+    'rgb(244,109,67)',
+    'rgb(253,174,97)',
+    'rgb(254,224,144)',
+    'rgb(255,255,191)',
+    'rgb(224,243,248)',
+    'rgb(171,217,233)',
+    'rgb(116,173,209)',
+    'rgb(69,117,180)',
+    'rgb(49,54,149)'
+  ],
+  'Spectral': [
+    'rgb(158,1,66)',
+    'rgb(213,62,79)',
+    'rgb(244,109,67)',
+    'rgb(253,174,97)',
+    'rgb(254,224,139)',
+    'rgb(255,255,191)',
+    'rgb(230,245,152)',
+    'rgb(171,221,164)',
+    'rgb(102,194,165)',
+    'rgb(50,136,189)',
+    'rgb(94,79,162)'
+  ],
+  'PuOr': [
+    'rgb(127,59,8)',
+    'rgb(179,88,6)',
+    'rgb(224,130,20)',
+    'rgb(253,184,99)',
+    'rgb(254,224,182)',
+    'rgb(247,247,247)',
+    'rgb(216,218,235)',
+    'rgb(178,171,210)',
+    'rgb(128,115,172)',
+    'rgb(84,39,136)',
+    'rgb(45,0,75)'
+  ],
+  'RdGy': [
+    'rgb(103,0,31)',
+    'rgb(178,24,43)',
+    'rgb(214,96,77)',
+    'rgb(244,165,130)',
+    'rgb(253,219,199)',
+    'rgb(255,255,255)',
+    'rgb(224,224,224)',
+    'rgb(186,186,186)',
+    'rgb(135,135,135)',
+    'rgb(77,77,77)',
+    'rgb(26,26,26)'
+  ]
+};
+
+// Add type for color maps
+type ColorMapKey = keyof typeof COLOR_MAPS;
+
 export function NpyViewer() {
   const [texture, setTexture] = useState<Texture | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +123,7 @@ export function NpyViewer() {
   const npyDataRef = useRef<{
     min: number;
     max: number;
-    data: Float32Array | Float64Array;
+    data: Float32Array | Float64Array | Uint8Array | Uint16Array | Int8Array | Int16Array | Int32Array | BigUint64Array | BigInt64Array;
   }>();
   // const [scale, setScale] = useState(1);
   // Add state for axis limits
@@ -37,6 +133,12 @@ export function NpyViewer() {
     ymin: 0,     // bottom-left
     ymax: 20     // top-left
   });
+
+  // Add state for selected color map
+  const [selectedColorMap, setSelectedColorMap] = useState<ColorMapKey>('RdYlBu');
+
+  // Add lastFileRef
+  const lastFileRef = useRef<File | null>(null);
 
   // Update container size effect
   useEffect(() => {
@@ -176,13 +278,14 @@ export function NpyViewer() {
   }, [points, draggedPoint]);
 
   const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    lastFileRef.current = file;  // Store the file
+    
     try {
       setError(null);
       setIsLoading(true);
       setPoints([]);
-
-      const file = event.target.files?.[0];
-      if (!file) return;
 
       const npyjs = new NpyJs();
       const arrayBuffer = await file.arrayBuffer();
@@ -192,15 +295,7 @@ export function NpyViewer() {
       const width = npyData.shape[1];
       const height = npyData.shape[0];
 
-      // Set initial axis limits based on image dimensions
-      setAxisLimits({
-        xmin: 0,
-        xmax: width,
-        ymin: 0,
-        ymax: height
-      });
-
-      // Process image data
+      // Find min/max values
       let min = Number(npyData.data[0]);
       let max = min;
       for (let i = 1; i < npyData.data.length; i++) {
@@ -209,13 +304,8 @@ export function NpyViewer() {
         if (val > max) max = val;
       }
 
-      // Create normalized data array
-      const data = new Float32Array(npyData.data.length);
-      for (let i = 0; i < npyData.data.length; i++) {
-        data[i] = Math.floor(((Number(npyData.data[i]) - min) / (max - min)) * 255);
-      }
-
-      npyDataRef.current = { min, max, data };
+      // Use selected color map
+      const colorMap = COLOR_MAPS[selectedColorMap];
 
       // Create canvas and context
       const canvas = document.createElement("canvas");
@@ -223,15 +313,21 @@ export function NpyViewer() {
       canvas.height = height;
       const ctx = canvas.getContext("2d")!;
 
-      // Create ImageData
+      // Create ImageData with color mapping
       const rgba = new Uint8ClampedArray(width * height * 4);
-      for (let i = 0; i < data.length; i++) {
-        const value = Math.floor(data[i]);
+      for (let i = 0; i < npyData.data.length; i++) {
+        // Normalize value to [0,1]
+        const normalizedValue = (Number(npyData.data[i]) - min) / (max - min);
+        
+        // Get interpolated color
+        const color = getColorFromMap(normalizedValue, colorMap);
+        
+        // Set RGBA values
         const idx = i * 4;
-        rgba[idx] = value;     // R
-        rgba[idx + 1] = value; // G
-        rgba[idx + 2] = value; // B
-        rgba[idx + 3] = 255;   // A
+        rgba[idx] = color.r;     // R
+        rgba[idx + 1] = color.g; // G
+        rgba[idx + 2] = color.b; // B
+        rgba[idx + 3] = 255;     // A
       }
 
       const imgData = new ImageData(rgba, width, height);
@@ -241,13 +337,16 @@ export function NpyViewer() {
       const newTexture = Texture.from(canvas);
       setTexture(newTexture);
 
+      // Store min/max values
+      npyDataRef.current = { min, max, data: npyData.data };
+
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load NPY file");
       setTexture(null);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [selectedColorMap]);
 
   // Update handleAxisLimitChange to handle immediate updates
   const handleAxisLimitChange = (
@@ -349,6 +448,59 @@ export function NpyViewer() {
     URL.revokeObjectURL(url);
   }, [points]);
 
+  // Update reprocessImage to accept colorMapKey parameter
+  const reprocessImage = async (file: File, colorMapKey: ColorMapKey) => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const npyjs = new NpyJs();
+      const npyData = await npyjs.load(arrayBuffer);
+
+      // Get dimensions from shape
+      const width = npyData.shape[1];
+      const height = npyData.shape[0];
+
+      // Find min/max values
+      let min = Number(npyData.data[0]);
+      let max = min;
+      for (let i = 1; i < npyData.data.length; i++) {
+        const val = Number(npyData.data[i]);
+        if (val < min) min = val;
+        if (val > max) max = val;
+      }
+
+      // Use passed color map key
+      const colorMap = COLOR_MAPS[colorMapKey];
+
+      // Create canvas and context
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+
+      // Create ImageData with color mapping
+      const rgba = new Uint8ClampedArray(width * height * 4);
+      for (let i = 0; i < npyData.data.length; i++) {
+        const normalizedValue = (Number(npyData.data[i]) - min) / (max - min);
+        const color = getColorFromMap(normalizedValue, colorMap);
+        const idx = i * 4;
+        rgba[idx] = color.r;
+        rgba[idx + 1] = color.g;
+        rgba[idx + 2] = color.b;
+        rgba[idx + 3] = 255;
+      }
+
+      const imgData = new ImageData(rgba, width, height);
+      ctx.putImageData(imgData, 0, 0);
+
+      // Create texture
+      const newTexture = Texture.from(canvas);
+      setTexture(newTexture);
+      npyDataRef.current = { min, max, data: npyData.data };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reprocess image");
+    }
+  };
+
   return (
     <div className="flex flex-col items-center">
       {/* File Input - Fixed position */}
@@ -357,13 +509,33 @@ export function NpyViewer() {
           type="file"
           accept=".npy"
           onChange={handleFileSelect}
-          className="block w-full text-sm text-gray-500
+          className="block w-full text-sm text-gray-500 mb-4
             file:mr-4 file:py-2 file:px-4
             file:rounded-full file:border-0
             file:text-sm file:font-semibold
             file:bg-blue-50 file:text-blue-700
             hover:file:bg-blue-100"
         />
+        <div className="flex flex-wrap gap-2 justify-center">
+          {(Object.keys(COLOR_MAPS) as ColorMapKey[]).map(mapName => (
+            <button
+              key={mapName}
+              onClick={() => {
+                setSelectedColorMap(mapName);
+                if (lastFileRef.current && npyDataRef.current) {
+                  reprocessImage(lastFileRef.current, mapName);  // Pass the new color map key
+                }
+              }}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                selectedColorMap === mapName 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+              }`}
+            >
+              {mapName}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Fixed height container for the rest of the content */}

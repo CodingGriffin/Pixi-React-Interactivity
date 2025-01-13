@@ -20,6 +20,8 @@ export function NpyViewer() {
   const [isLoading, setIsLoading] = useState(false);
   const [points, setPoints] = useState<Point[]>([]);
   const [hoveredPoint, setHoveredPoint] = useState<Point | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [draggedPoint, setDraggedPoint] = useState<Point | null>(null);
   // const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const npyDataRef = useRef<{
@@ -77,52 +79,101 @@ export function NpyViewer() {
     return { axisX, axisY };
   };
 
+  // Add helper function to clamp coordinates
+  const clampCoordinates = (x: number, y: number) => {
+    return {
+      x: Math.max(0, Math.min(800, x)),  // Clamp x between 0 and 800
+      y: Math.max(0, Math.min(400, y))   // Clamp y between 0 and 400
+    };
+  };
+
   // Update handlePointerDown to correctly map coordinates
   const handlePointerDown = useCallback((event: FederatedPointerEvent) => {
     if (!texture) return;
     
-    // Get coordinates relative to the Application
-    const bounds = event.currentTarget.getBounds();
-    const x = event.global.x - bounds.x;
-    const y = event.global.y - bounds.y;
+    const x = event.global.x;
+    const y = event.global.y;
     
-    if (event.shiftKey) {
-      // Add point
-      const { axisX, axisY } = calculateDisplayValues(x, y);
-      const newPoint = { 
-        x, 
-        y, 
-        value: 0,
-        axisX,
-        axisY,
-        color: 0xFF0000 
-      };
-      setPoints(prev => [...prev, newPoint]);
-    } else if (event.altKey) {
-      // Remove point
-      setPoints(prev => prev.filter(point => {
-        const dx = point.x - x;
-        const dy = point.y - y;
-        return Math.sqrt(dx * dx + dy * dy) > 10;
-      }));
-    }
-  }, [texture, calculateDisplayValues]);
-
-  const handlePointerMove = useCallback((event: FederatedPointerEvent) => {
-    if (!texture) return;
-    
-    const bounds = event.currentTarget.getBounds();
-    const x = event.global.x - bounds.x;
-    const y = event.global.y - bounds.y;
-    
-    const hoveredPoint = points.find(point => {
+    // Check for existing point first
+    const clickedPoint = points.find(point => {
       const dx = point.x - x;
       const dy = point.y - y;
       return Math.sqrt(dx * dx + dy * dy) < 10;
     });
+
+    if (clickedPoint) {
+      if (event.altKey) {
+        // Remove point
+        setPoints(prev => prev.filter(p => p !== clickedPoint));
+        setHoveredPoint(null);
+      } else {
+        // Start dragging
+        setIsDragging(true);
+        setDraggedPoint(clickedPoint);
+      }
+      return;
+    }
+
+    // Add new point with Shift
+    if (event.shiftKey) {
+      const { axisX, axisY } = calculateDisplayValues(x, y);
+      const newPoint = { x, y, value: 0, axisX, axisY, color: 0xFF0000 };
+      setPoints(prev => [...prev, newPoint]);
+    }
+  }, [texture, points]);
+
+  const handlePointerMove = useCallback((event: FederatedPointerEvent) => {
+    if (!texture) return;
     
-    setHoveredPoint(hoveredPoint || null);
-  }, [points, texture]);
+    const x = event.global.x;
+    const y = event.global.y;
+
+    if (isDragging && draggedPoint) {
+      // Clamp coordinates to image bounds
+      const { x: clampedX, y: clampedY } = clampCoordinates(x, y);
+      
+      const { axisX, axisY } = calculateDisplayValues(clampedX, clampedY);
+      const updatedPoint = { 
+        ...draggedPoint, 
+        x: clampedX, 
+        y: clampedY, 
+        axisX, 
+        axisY 
+      };
+      
+      setPoints(prev => prev.map(p => p === draggedPoint ? updatedPoint : p));
+      setDraggedPoint(updatedPoint);
+    } else {
+      // Handle hover with clamped coordinates
+      const { x: clampedX, y: clampedY } = clampCoordinates(x, y);
+      const hoveredPoint = points.find(point => {
+        const dx = point.x - clampedX;
+        const dy = point.y - clampedY;
+        return Math.sqrt(dx * dx + dy * dy) < 10;
+      });
+      setHoveredPoint(hoveredPoint || null);
+    }
+  }, [texture, isDragging, draggedPoint, points]);
+
+  const handlePointerUp = useCallback((event: FederatedPointerEvent) => {
+    if (draggedPoint) {
+      // Update hover state with the final position
+      const x = event.global.x;
+      const y = event.global.y;
+      
+      // Find point at the current mouse position
+      const pointAtPosition = points.find(point => {
+        const dx = point.x - x;
+        const dy = point.y - y;
+        return Math.sqrt(dx * dx + dy * dy) < 10;
+      });
+      
+      setHoveredPoint(pointAtPosition || null);
+    }
+    
+    setIsDragging(false);
+    setDraggedPoint(null);
+  }, [points, draggedPoint]);
 
   const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
@@ -247,6 +298,34 @@ export function NpyViewer() {
   //   }
   // };
 
+  // Add window-level pointer up handler using useEffect
+  useEffect(() => {
+    const handleGlobalPointerUp = (e: PointerEvent) => {
+      if (draggedPoint) {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) {
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          
+          // Find point at the final position
+          const pointAtPosition = points.find(point => {
+            const dx = point.x - x;
+            const dy = point.y - y;
+            return Math.sqrt(dx * dx + dy * dy) < 10;
+          });
+          
+          setHoveredPoint(pointAtPosition || null);
+        }
+      }
+      
+      setIsDragging(false);
+      setDraggedPoint(null);
+    };
+
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    return () => window.removeEventListener('pointerup', handleGlobalPointerUp);
+  }, [points, draggedPoint]);
+
   return (
     <div className="flex flex-col items-center">
       {/* File Input - Fixed position */}
@@ -330,6 +409,14 @@ export function NpyViewer() {
                 <div className="text-xs">{axisLimits.xmin.toFixed(3)}</div>
               </div>
 
+              {/* Add axis labels */}
+              {/* <div className="absolute -left-16 top-1/2 -rotate-90 text-sm font-medium text-gray-600">
+                Frequency
+              </div> */}
+              {/* <div className="absolute bottom-[-2rem] w-full text-center text-sm font-medium text-gray-600">
+                Slowness
+              </div> */}
+
               {/* PixiJS Component */}
               <div
                 ref={containerRef}
@@ -353,17 +440,17 @@ export function NpyViewer() {
                     <pixiGraphics
                       draw={g => {
                         g.clear();
-                        // First draw a transparent interactive area
+                        // Draw interactive area
                         g.beginFill(0xFFFFFF, 0);
                         g.drawRect(0, 0, 800, 400);
                         g.endFill();
                         
-                        // Then draw the points
+                        // Draw points
                         points.forEach(point => {
-                          const isHovered = hoveredPoint === point;
+                          const isActive = point === draggedPoint || point === hoveredPoint;
                           g.beginFill(0xFF0000);
-                          g.drawCircle(point.x, point.y, isHovered ? 7 : 5);
-                          if (isHovered) {
+                          g.drawCircle(point.x, point.y, isActive ? 7 : 5);
+                          if (isActive) {
                             g.beginFill(0xFFFFFF, 0.8);
                             g.drawCircle(point.x, point.y, 3);
                           }
@@ -373,18 +460,21 @@ export function NpyViewer() {
                       eventMode="static"
                       onPointerDown={handlePointerDown}
                       onPointerMove={handlePointerMove}
+                      onPointerUp={handlePointerUp}
+                      onPointerUpOutside={handlePointerUp}
                     />
                   </pixiContainer>
                 </Application>
 
                 {/* Tooltip */}
-                {hoveredPoint && (
-                  <div className="absolute bg-white border border-black rounded px-1.5 py-0.5 text-xs shadow-sm pointer-events-none"
-                      style={{
-                        left: hoveredPoint.x + 15,
-                        top: hoveredPoint.y - 15,
-                        zIndex: 1000
-                      }}
+                {(hoveredPoint || draggedPoint) && (
+                  <div 
+                    className="absolute bg-white border border-black rounded px-1.5 py-0.5 text-xs shadow-sm pointer-events-none"
+                    style={{
+                      left: (draggedPoint || hoveredPoint)!.x + 15,
+                      top: (draggedPoint || hoveredPoint)!.y - 15,
+                      zIndex: 1000
+                    }}
                   >
                     <div className="flex items-center gap-1">
                       <div 
@@ -394,8 +484,8 @@ export function NpyViewer() {
                         }}
                       />
                       {(() => {
-                        // Calculate current axis values based on screen position
-                        const { axisX, axisY } = calculateDisplayValues(hoveredPoint.x, hoveredPoint.y);
+                        const point = draggedPoint || hoveredPoint;
+                        const { axisX, axisY } = calculateDisplayValues(point!.x, point!.y);
                         return `(${axisX.toFixed(3)}, ${axisY.toFixed(3)})`;
                       })()}
                     </div>

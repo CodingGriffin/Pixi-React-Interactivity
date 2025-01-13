@@ -326,6 +326,29 @@ export function NpyViewer() {
     return () => window.removeEventListener('pointerup', handleGlobalPointerUp);
   }, [points, draggedPoint]);
 
+  // Add download function
+  const handleDownloadPoints = useCallback(() => {
+    // Format points data
+    const pointsData = points.map(point => 
+      `${point.axisX.toFixed(3)}, ${point.axisY.toFixed(3)}`
+    ).join('\n');
+    
+    // Create blob and download link
+    const blob = new Blob([pointsData], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'plotted_points.txt';
+    
+    // Trigger download
+    document.body.appendChild(link);
+    link.click();
+    
+    // Cleanup
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [points]);
+
   return (
     <div className="flex flex-col items-center">
       {/* File Input - Fixed position */}
@@ -508,6 +531,15 @@ export function NpyViewer() {
             <li>Alt + Click: Remove point</li>
             <li>Hover over points to see coordinates</li>
           </ul>
+          <div className="mt-4 flex justify-center">
+            <button
+              onClick={handleDownloadPoints}
+              className="px-4 py-2 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors"
+              disabled={points.length === 0}
+            >
+              Download Points
+            </button>
+          </div>
         </div>
       </div>
 

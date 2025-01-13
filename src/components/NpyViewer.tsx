@@ -427,10 +427,15 @@ export function NpyViewer() {
 
   // Add download function
   const handleDownloadPoints = useCallback(() => {
-    // Format points data
-    const pointsData = points.sort((a, b) => a.axisX - b.axisX).map(point => 
-      `${point.axisX.toFixed(3)}, ${point.axisY.toFixed(3)}`
-    ).join('\n');
+    // Sort points by x-axis value and format with display values
+    const pointsData = points
+      .map(point => {
+        const { axisX, axisY } = calculateDisplayValues(point.x, point.y);
+        return { axisX, axisY };
+      })
+      .sort((a, b) => a.axisX - b.axisX)  // Sort in descending order (right to left)
+      .map(point => `${point.axisX.toFixed(3)}, ${point.axisY.toFixed(3)}`)
+      .join('\n');
     
     // Create blob and download link
     const blob = new Blob([pointsData], { type: 'text/plain' });
@@ -446,7 +451,7 @@ export function NpyViewer() {
     // Cleanup
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [points]);
+  }, [points, calculateDisplayValues]);
 
   // Update reprocessImage to accept colorMapKey parameter
   const reprocessImage = async (file: File, colorMapKey: ColorMapKey) => {

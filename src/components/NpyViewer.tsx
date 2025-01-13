@@ -110,6 +110,14 @@ const COLOR_MAPS = {
 // Add type for color maps
 type ColorMapKey = keyof typeof COLOR_MAPS;
 
+// Add type for original data
+interface NpyData {
+  data: Float32Array | Float64Array | Uint8Array | Uint16Array | Int8Array | Int16Array | Int32Array | BigUint64Array | BigInt64Array;
+  shape: number[];
+  min: number;
+  max: number;
+}
+
 export function NpyViewer() {
   const [texture, setTexture] = useState<Texture | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +147,77 @@ export function NpyViewer() {
 
   // Add lastFileRef
   const lastFileRef = useRef<File | null>(null);
+
+  // Update state and refs
+  const [imageTransform, setImageTransform] = useState({
+    flipHorizontal: false,
+    flipVertical: false,
+    rotate90: false
+  });
+
+  // Add ref for original data
+  const originalDataRef = useRef<NpyData | null>(null);
+
+  // Add transform function that works with stored data
+  const applyTransformations = useCallback(() => {
+    if (!originalDataRef.current) return;
+    
+    const { data, shape } = originalDataRef.current;
+    const [height, width] = shape;
+    const transformed = new Float32Array(data.length);
+    
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let dstX = x;
+        let dstY = y;
+        
+        // Apply rotations first
+        if (imageTransform.rotate90) {
+          [dstX, dstY] = [height - 1 - y, x];
+        }
+        
+        // Then apply flips
+        if (imageTransform.flipHorizontal) {
+          dstX = (imageTransform.rotate90 ? height : width) - 1 - dstX;
+        }
+        if (imageTransform.flipVertical) {
+          dstY = (imageTransform.rotate90 ? width : height) - 1 - dstY;
+        }
+        
+        const srcIndex = y * width + x;
+        const dstIndex = dstY * (imageTransform.rotate90 ? height : width) + dstX;
+        transformed[dstIndex] = Number(data[srcIndex]);
+      }
+    }
+
+    // Create canvas and context
+    const canvas = document.createElement("canvas");
+    canvas.width = imageTransform.rotate90 ? height : width;
+    canvas.height = imageTransform.rotate90 ? width : height;
+    const ctx = canvas.getContext("2d")!;
+
+    // Create ImageData with color mapping
+    const rgba = new Uint8ClampedArray(width * height * 4);
+    const { min, max } = originalDataRef.current;
+    const colorMap = COLOR_MAPS[selectedColorMap];
+
+    for (let i = 0; i < transformed.length; i++) {
+      const normalizedValue = (transformed[i] - min) / (max - min);
+      const color = getColorFromMap(normalizedValue, colorMap);
+      const idx = i * 4;
+      rgba[idx] = color.r;
+      rgba[idx + 1] = color.g;
+      rgba[idx + 2] = color.b;
+      rgba[idx + 3] = 255;
+    }
+
+    const imgData = new ImageData(rgba, canvas.width, canvas.height);
+    ctx.putImageData(imgData, 0, 0);
+
+    // Create texture
+    const newTexture = Texture.from(canvas);
+    setTexture(newTexture);
+  }, [imageTransform, selectedColorMap]);
 
   // Update container size effect
   useEffect(() => {
@@ -277,10 +356,11 @@ export function NpyViewer() {
     setDraggedPoint(null);
   }, [points, draggedPoint]);
 
+  // Update handleFileSelect to store original data
   const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    lastFileRef.current = file;  // Store the file
+    lastFileRef.current = file;
     
     try {
       setError(null);
@@ -291,10 +371,6 @@ export function NpyViewer() {
       const arrayBuffer = await file.arrayBuffer();
       const npyData = await npyjs.load(arrayBuffer);
 
-      // Get dimensions from shape
-      const width = npyData.shape[1];
-      const height = npyData.shape[0];
-
       // Find min/max values
       let min = Number(npyData.data[0]);
       let max = min;
@@ -304,41 +380,16 @@ export function NpyViewer() {
         if (val > max) max = val;
       }
 
-      // Use selected color map
-      const colorMap = COLOR_MAPS[selectedColorMap];
+      // Store original data
+      originalDataRef.current = {
+        data: npyData.data,
+        shape: npyData.shape,
+        min,
+        max
+      };
 
-      // Create canvas and context
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d")!;
-
-      // Create ImageData with color mapping
-      const rgba = new Uint8ClampedArray(width * height * 4);
-      for (let i = 0; i < npyData.data.length; i++) {
-        // Normalize value to [0,1]
-        const normalizedValue = (Number(npyData.data[i]) - min) / (max - min);
-        
-        // Get interpolated color
-        const color = getColorFromMap(normalizedValue, colorMap);
-        
-        // Set RGBA values
-        const idx = i * 4;
-        rgba[idx] = color.r;     // R
-        rgba[idx + 1] = color.g; // G
-        rgba[idx + 2] = color.b; // B
-        rgba[idx + 3] = 255;     // A
-      }
-
-      const imgData = new ImageData(rgba, width, height);
-      ctx.putImageData(imgData, 0, 0);
-
-      // Create texture
-      const newTexture = Texture.from(canvas);
-      setTexture(newTexture);
-
-      // Store min/max values
-      npyDataRef.current = { min, max, data: npyData.data };
+      // Apply initial transformations
+      applyTransformations();
 
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load NPY file");
@@ -346,7 +397,7 @@ export function NpyViewer() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedColorMap]);
+  }, [applyTransformations]);
 
   // Update handleAxisLimitChange to handle immediate updates
   const handleAxisLimitChange = (
@@ -506,8 +557,67 @@ export function NpyViewer() {
     }
   };
 
+  // Add effect to apply transformations when state changes
+  useEffect(() => {
+    if (originalDataRef.current) {
+      applyTransformations();
+    }
+  }, [imageTransform, selectedColorMap, applyTransformations]);
+
   return (
     <div className="flex flex-col items-center">
+      {/* Add transformation controls */}
+      {texture && (
+        <div className="mb-4 flex gap-4">
+          <button
+            onClick={() => {
+              setImageTransform(prev => ({
+                ...prev,
+                flipHorizontal: !prev.flipHorizontal
+              }));
+              // Transformations will be applied in useEffect
+            }}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+              imageTransform.flipHorizontal 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+            }`}
+          >
+            Flip Horizontal
+          </button>
+          <button
+            onClick={() => {
+              setImageTransform(prev => ({
+                ...prev,
+                flipVertical: !prev.flipVertical
+              }));
+            }}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+              imageTransform.flipVertical 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+            }`}
+          >
+            Flip Vertical
+          </button>
+          <button
+            onClick={() => {
+              setImageTransform(prev => ({
+                ...prev,
+                rotate90: !prev.rotate90
+              }));
+            }}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+              imageTransform.rotate90 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+            }`}
+          >
+            Rotate 90°
+          </button>
+        </div>
+      )}
+
       {/* File Input - Fixed position */}
       <div className="w-full max-w-xl mb-8">
         <input

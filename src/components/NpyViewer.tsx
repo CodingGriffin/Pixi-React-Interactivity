@@ -286,7 +286,15 @@ export function NpyViewer() {
     const x = event.global.x;
     const y = event.global.y;
 
-    // Check for existing point first
+    // Add new point with Shift first, regardless of hover state
+    if (event.shiftKey) {
+      const { axisX, axisY } = calculateDisplayValues(x, y);
+      const newPoint = { x, y, value: 0, axisX, axisY, color: 0xFF0000 };
+      setPoints(prev => [...prev, newPoint]);
+      return;
+    }
+
+    // Check for existing point for other interactions
     const clickedPoint = points.find(point => {
       const dx = point.x - x;
       const dy = point.y - y;
@@ -303,14 +311,6 @@ export function NpyViewer() {
         setIsDragging(true);
         setDraggedPoint(clickedPoint);
       }
-      return;
-    }
-
-    // Add new point with Shift
-    if (event.shiftKey) {
-      const { axisX, axisY } = calculateDisplayValues(x, y);
-      const newPoint = { x, y, value: 0, axisX, axisY, color: 0xFF0000 };
-      setPoints(prev => [...prev, newPoint]);
     }
   }, [texture, points]);
 

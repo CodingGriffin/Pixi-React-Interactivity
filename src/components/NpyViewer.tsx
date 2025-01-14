@@ -314,16 +314,39 @@ export function NpyViewer() {
     }
   }, [texture, points]);
 
+  // Add this useEffect for global pointer up handling
+  useEffect(() => {
+    const handleGlobalPointerUp = () => {
+      // Reset all states when pointer is released anywhere
+      setIsDragging(false);
+      setDraggedPoint(null);
+      setHoveredPoint(null);
+    };
+
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    return () => window.removeEventListener('pointerup', handleGlobalPointerUp);
+  }, []);
+
+  // Update handlePointerUp to handle both normal and outside cases
+  const handlePointerUp = useCallback(() => {
+    if (!texture) return;
+
+    // Reset all states
+    setIsDragging(false);
+    setDraggedPoint(null);
+    setHoveredPoint(null);
+  }, [texture]);
+
+  // Update handlePointerMove to check isDragging state more strictly
   const handlePointerMove = useCallback((event: FederatedPointerEvent) => {
     if (!texture) return;
 
     const x = event.global.x;
     const y = event.global.y;
 
-    if (isDragging && draggedPoint) {
-      // Clamp coordinates to image bounds
+    // Only process drag if we're actually in dragging state and have a dragged point
+    if (isDragging && draggedPoint && event.buttons > 0) { // Check if button is still pressed
       const { x: clampedX, y: clampedY } = clampCoordinates(x, y);
-
       const { axisX, axisY } = calculateDisplayValues(clampedX, clampedY);
       const updatedPoint = {
         ...draggedPoint,
@@ -336,7 +359,7 @@ export function NpyViewer() {
       setPoints(prev => prev.map(p => p === draggedPoint ? updatedPoint : p));
       setDraggedPoint(updatedPoint);
     } else {
-      // Handle hover with clamped coordinates
+      // If not dragging, handle hover
       const { x: clampedX, y: clampedY } = clampCoordinates(x, y);
       const hoveredPoint = points.find(point => {
         const dx = point.x - clampedX;
@@ -344,20 +367,14 @@ export function NpyViewer() {
         return Math.sqrt(dx * dx + dy * dy) < 10;
       });
       setHoveredPoint(hoveredPoint || null);
+
+      // If we were dragging but button is no longer pressed, reset drag state
+      if (isDragging && event.buttons === 0) {
+        setIsDragging(false);
+        setDraggedPoint(null);
+      }
     }
   }, [texture, isDragging, draggedPoint, points]);
-
-  const handlePointerUp = useCallback(() => {
-    if (!texture) return;
-
-    // Reset all drag and hover states immediately
-    setIsDragging(false);
-    setDraggedPoint(null);
-    setHoveredPoint(null);
-
-    // Let the handlePointerMove handle any new hover state
-    // on the next mouse movement
-  }, [texture]);
 
   // Update handleFileSelect to store original data
   const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {

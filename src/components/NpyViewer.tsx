@@ -347,7 +347,7 @@ export function NpyViewer() {
     }
   }, [texture, isDragging, draggedPoint, points]);
 
-  const handlePointerUp = useCallback((event: FederatedPointerEvent) => {
+  const handlePointerUp = useCallback(() => {
     if (!texture) return;
 
     // Reset all drag and hover states immediately

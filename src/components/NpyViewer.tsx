@@ -47,7 +47,7 @@ const getColorFromMap = (normalizedValue: number, colorMap: string[]): RGB => {
   const segments = rgbColors.length - 1;
   const segment = Math.min(Math.floor(normalizedValue * segments), segments - 1);
   const segmentRatio = (normalizedValue * segments) - segment;
-  
+
   return interpolateRGB(rgbColors[segment], rgbColors[segment + 1], segmentRatio);
 };
 
@@ -152,7 +152,8 @@ export function NpyViewer() {
   const [imageTransform, setImageTransform] = useState({
     flipHorizontal: false,
     flipVertical: false,
-    rotate90: false
+    rotationCounterClockwise: false,
+    rotationClockwise: false
   });
 
   // Add ref for original data
@@ -161,43 +162,53 @@ export function NpyViewer() {
   // Add transform function that works with stored data
   const applyTransformations = useCallback(() => {
     if (!originalDataRef.current) return;
-    
+
     const { data, shape } = originalDataRef.current;
     const [height, width] = shape;
     const transformed = new Float32Array(data.length);
-    
+
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         let dstX = x;
         let dstY = y;
-        
-        // Apply rotations first
-        if (imageTransform.rotate90) {
-          [dstX, dstY] = [height - 1 - y, x];
+
+        // Apply counter-clockwise rotation (90° CCW)
+        if (imageTransform.rotationCounterClockwise) {
+          [dstX, dstY] = [dstY, width - 1 - dstX];
         }
-        
-        // Then apply flips
+
+        // Apply clockwise rotation (90° CW)
+        if (imageTransform.rotationClockwise) {
+          [dstX, dstY] = [height - 1 - dstY, dstX];
+        }
+
+        // Apply flips after rotations
+        const isRotated = imageTransform.rotationCounterClockwise || imageTransform.rotationClockwise;
+        const currentWidth = isRotated ? height : width;
+        const currentHeight = isRotated ? width : height;
+
         if (imageTransform.flipHorizontal) {
-          dstX = (imageTransform.rotate90 ? height : width) - 1 - dstX;
+          dstX = currentWidth - 1 - dstX;
         }
         if (imageTransform.flipVertical) {
-          dstY = (imageTransform.rotate90 ? width : height) - 1 - dstY;
+          dstY = currentHeight - 1 - dstY;
         }
-        
+
         const srcIndex = y * width + x;
-        const dstIndex = dstY * (imageTransform.rotate90 ? height : width) + dstX;
+        const dstIndex = dstY * (isRotated ? height : width) + dstX;
         transformed[dstIndex] = Number(data[srcIndex]);
       }
     }
 
-    // Create canvas and context
+    // Create canvas with appropriate dimensions
     const canvas = document.createElement("canvas");
-    canvas.width = imageTransform.rotate90 ? height : width;
-    canvas.height = imageTransform.rotate90 ? width : height;
+    const isRotated = imageTransform.rotationCounterClockwise || imageTransform.rotationClockwise;
+    canvas.width = isRotated ? height : width;
+    canvas.height = isRotated ? width : height;
     const ctx = canvas.getContext("2d")!;
 
     // Create ImageData with color mapping
-    const rgba = new Uint8ClampedArray(width * height * 4);
+    const rgba = new Uint8ClampedArray(canvas.width * canvas.height * 4);
     const { min, max } = originalDataRef.current;
     const colorMap = COLOR_MAPS[selectedColorMap];
 
@@ -237,26 +248,26 @@ export function NpyViewer() {
   // const screenToAxisCoords = (screenX: number, screenY: number) => {
   //   const xRange = axisLimits.xmax - axisLimits.xmin;
   //   const yRange = axisLimits.ymax - axisLimits.ymin;
-    
+
   //   // Convert screen coordinates to axis values
   //   const x = axisLimits.xmin + (screenX / texture!.width) * xRange;
   //   const y = axisLimits.ymax - (screenY / texture!.height) * yRange; // Invert Y axis
-    
+
   //   return { x, y };
   // };
 
   // Move this function before handlePointerDown
   const calculateDisplayValues = (screenX: number, screenY: number) => {
     if (!texture) return { axisX: 0, axisY: 0 };
-    
+
     // For x: right to left (screenX = 0 maps to xmax, screenX = 800 maps to xmin)
     const xRatio = (800 - screenX) / 800;  // Invert X direction
     const axisX = axisLimits.xmin + xRatio * (axisLimits.xmax - axisLimits.xmin);
-    
+
     // For y: bottom to top (screenY = 400 maps to ymin, screenY = 0 maps to ymax)
     const yRatio = (400 - screenY) / 400;  // Invert Y direction
     const axisY = axisLimits.ymin + yRatio * (axisLimits.ymax - axisLimits.ymin);
-    
+
     return { axisX, axisY };
   };
 
@@ -271,10 +282,10 @@ export function NpyViewer() {
   // Update handlePointerDown to correctly map coordinates
   const handlePointerDown = useCallback((event: FederatedPointerEvent) => {
     if (!texture) return;
-    
+
     const x = event.global.x;
     const y = event.global.y;
-    
+
     // Check for existing point first
     const clickedPoint = points.find(point => {
       const dx = point.x - x;
@@ -305,23 +316,23 @@ export function NpyViewer() {
 
   const handlePointerMove = useCallback((event: FederatedPointerEvent) => {
     if (!texture) return;
-    
+
     const x = event.global.x;
     const y = event.global.y;
 
     if (isDragging && draggedPoint) {
       // Clamp coordinates to image bounds
       const { x: clampedX, y: clampedY } = clampCoordinates(x, y);
-      
+
       const { axisX, axisY } = calculateDisplayValues(clampedX, clampedY);
-      const updatedPoint = { 
-        ...draggedPoint, 
-        x: clampedX, 
-        y: clampedY, 
-        axisX, 
-        axisY 
+      const updatedPoint = {
+        ...draggedPoint,
+        x: clampedX,
+        y: clampedY,
+        axisX,
+        axisY
       };
-      
+
       setPoints(prev => prev.map(p => p === draggedPoint ? updatedPoint : p));
       setDraggedPoint(updatedPoint);
     } else {
@@ -341,17 +352,17 @@ export function NpyViewer() {
       // Update hover state with the final position
       const x = event.global.x;
       const y = event.global.y;
-      
+
       // Find point at the current mouse position
       const pointAtPosition = points.find(point => {
         const dx = point.x - x;
         const dy = point.y - y;
         return Math.sqrt(dx * dx + dy * dy) < 10;
       });
-      
+
       setHoveredPoint(pointAtPosition || null);
     }
-    
+
     setIsDragging(false);
     setDraggedPoint(null);
   }, [points, draggedPoint]);
@@ -361,7 +372,7 @@ export function NpyViewer() {
     const file = event.target.files?.[0];
     if (!file) return;
     lastFileRef.current = file;
-    
+
     try {
       setError(null);
       setIsLoading(true);
@@ -421,10 +432,10 @@ export function NpyViewer() {
   // const drawAxes = (g: Graphics) => {
   //   g.clear();
   //   g.lineStyle(1, 0x000000);
-    
+
   //   // Draw border
   //   g.drawRect(0, 0, texture!.width, texture!.height);
-    
+
   //   // Y-axis ticks (0 to 20, step by 5)
   //   for (let y = 0; y <= 20; y += 5) {
   //     const yPos = texture!.height - (y / 20) * texture!.height;
@@ -435,7 +446,7 @@ export function NpyViewer() {
   //       fill: 0x000000,
   //     }).position.set(-25, yPos - 5);
   //   }
-    
+
   //   // X-axis ticks (0.015 to 0.030, step by 0.005)
   //   for (let x = 0.015; x <= 0.030; x += 0.005) {
   //     const xPos = ((x - 0.015) / 0.015) * texture!.width;
@@ -456,18 +467,18 @@ export function NpyViewer() {
         if (rect) {
           const x = e.clientX - rect.left;
           const y = e.clientY - rect.top;
-          
+
           // Find point at the final position
           const pointAtPosition = points.find(point => {
             const dx = point.x - x;
             const dy = point.y - y;
             return Math.sqrt(dx * dx + dy * dy) < 10;
           });
-          
+
           setHoveredPoint(pointAtPosition || null);
         }
       }
-      
+
       setIsDragging(false);
       setDraggedPoint(null);
     };
@@ -487,18 +498,18 @@ export function NpyViewer() {
       .sort((a, b) => a.axisX - b.axisX)  // Sort in descending order (right to left)
       .map(point => `${point.axisX.toFixed(3)}, ${point.axisY.toFixed(3)}`)
       .join('\n');
-    
+
     // Create blob and download link
     const blob = new Blob([pointsData], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = 'plotted_points.txt';
-    
+
     // Trigger download
     document.body.appendChild(link);
     link.click();
-    
+
     // Cleanup
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
@@ -567,56 +578,7 @@ export function NpyViewer() {
   return (
     <div className="flex flex-col items-center">
       {/* Add transformation controls */}
-      {texture && (
-        <div className="mb-4 flex gap-4">
-          <button
-            onClick={() => {
-              setImageTransform(prev => ({
-                ...prev,
-                flipHorizontal: !prev.flipHorizontal
-              }));
-              // Transformations will be applied in useEffect
-            }}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-              imageTransform.flipHorizontal 
-                ? 'bg-blue-600 text-white' 
-                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-            }`}
-          >
-            Flip Horizontal
-          </button>
-          <button
-            onClick={() => {
-              setImageTransform(prev => ({
-                ...prev,
-                flipVertical: !prev.flipVertical
-              }));
-            }}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-              imageTransform.flipVertical 
-                ? 'bg-blue-600 text-white' 
-                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-            }`}
-          >
-            Flip Vertical
-          </button>
-          <button
-            onClick={() => {
-              setImageTransform(prev => ({
-                ...prev,
-                rotate90: !prev.rotate90
-              }));
-            }}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-              imageTransform.rotate90 
-                ? 'bg-blue-600 text-white' 
-                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-            }`}
-          >
-            Rotate 90°
-          </button>
-        </div>
-      )}
+
 
       {/* File Input - Fixed position */}
       <div className="w-full max-w-xl mb-8">
@@ -641,11 +603,10 @@ export function NpyViewer() {
                   reprocessImage(lastFileRef.current, mapName);  // Pass the new color map key
                 }
               }}
-              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                selectedColorMap === mapName 
-                  ? 'bg-blue-600 text-white' 
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${selectedColorMap === mapName
+                  ? 'bg-blue-600 text-white'
                   : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-              }`}
+                }`}
             >
               {mapName}
             </button>
@@ -745,7 +706,7 @@ export function NpyViewer() {
                       width={800}
                       height={400}
                     />
-                    
+
                     {/* Points and Interactive Area */}
                     <pixiGraphics
                       draw={g => {
@@ -754,7 +715,7 @@ export function NpyViewer() {
                         g.beginFill(0xFFFFFF, 0);
                         g.drawRect(0, 0, 800, 400);
                         g.endFill();
-                        
+
                         // Draw points
                         points.forEach(point => {
                           const isActive = point === draggedPoint || point === hoveredPoint;
@@ -778,7 +739,7 @@ export function NpyViewer() {
 
                 {/* Tooltip */}
                 {(hoveredPoint || draggedPoint) && (
-                  <div 
+                  <div
                     className="absolute bg-white border border-black rounded px-1.5 py-0.5 text-xs shadow-sm pointer-events-none"
                     style={{
                       left: (draggedPoint || hoveredPoint)!.x + 15,
@@ -787,7 +748,7 @@ export function NpyViewer() {
                     }}
                   >
                     <div className="flex items-center gap-1">
-                      <div 
+                      <div
                         className="w-3 h-3 border border-black"
                         style={{
                           background: "rgb(255, 0, 0)"
@@ -801,7 +762,7 @@ export function NpyViewer() {
                     </div>
                   </div>
                 )}
-              </div>  
+              </div>
             </div>
           ) : (
             <div className="w-[800px] h-[400px] border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
@@ -809,7 +770,68 @@ export function NpyViewer() {
             </div>
           )}
         </div>
-
+        {texture && (
+          <div className="mb-4 flex gap-4 mt-5">
+            <button
+              onClick={() => {
+                setImageTransform(prev => ({
+                  ...prev,
+                  rotationCounterClockwise: !prev.rotationCounterClockwise,
+                  rotationClockwise: false // Disable clockwise when counter-clockwise is enabled
+                }));
+              }}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${imageTransform.rotationCounterClockwise
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                }`}
+            >
+              Rotate Counter-clockwise
+            </button>
+            <button
+              onClick={() => {
+                setImageTransform(prev => ({
+                  ...prev,
+                  rotationClockwise: !prev.rotationClockwise,
+                  rotationCounterClockwise: false // Disable counter-clockwise when clockwise is enabled
+                }));
+              }}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${imageTransform.rotationClockwise
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                }`}
+            >
+              Rotate Clockwise
+            </button>
+            <button
+              onClick={() => {
+                setImageTransform(prev => ({
+                  ...prev,
+                  flipHorizontal: !prev.flipHorizontal
+                }));
+              }}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${imageTransform.flipHorizontal
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                }`}
+            >
+              Flip Horizontal
+            </button>
+            <button
+              onClick={() => {
+                setImageTransform(prev => ({
+                  ...prev,
+                  flipVertical: !prev.flipVertical
+                }));
+              }}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${imageTransform.flipVertical
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                }`}
+            >
+              Flip Vertical
+            </button>
+          </div>
+        )}
         {/* Controls Info */}
         <div className="mt-8 p-4 bg-gray-50 rounded-lg w-full max-w-md">
           <h3 className="font-semibold mb-2 text-center">Controls:</h3>

@@ -699,33 +699,13 @@ export function NpyViewer() {
                       height={400}
                     />
 
-                    {/* Points and Interactive Area */}
+                    {/* Interactive Area */}
                     <pixiGraphics
                       draw={g => {
                         g.clear();
-                        // Draw interactive area
                         g.beginFill(0xFFFFFF, 0);
                         g.drawRect(0, 0, 800, 400);
                         g.endFill();
-
-                        // First draw non-selected points
-                        points.forEach(point => {
-                          if (point !== draggedPoint && point !== hoveredPoint) {
-                            g.beginFill(0xFF0000);
-                            g.drawCircle(point.x, point.y, 5);
-                            g.endFill();
-                          }
-                        });
-
-                        // Then draw the selected point on top
-                        const selectedPoint = draggedPoint || hoveredPoint;
-                        if (selectedPoint) {
-                          g.beginFill(0xFF0000);
-                          g.drawCircle(selectedPoint.x, selectedPoint.y, 7);
-                          g.beginFill(0xFFFFFF, 0.8);
-                          g.drawCircle(selectedPoint.x, selectedPoint.y, 3);
-                          g.endFill();
-                        }
                       }}
                       eventMode="static"
                       onPointerDown={handlePointerDown}
@@ -733,6 +713,38 @@ export function NpyViewer() {
                       onPointerUp={handlePointerUp}
                       onPointerUpOutside={handlePointerUp}
                     />
+
+                    {/* Points Layer */}
+                    {/* First render non-selected points */}
+                    {points.map((point, index) => {
+                      if (point === draggedPoint || point === hoveredPoint) return null;
+                      return (
+                        <pixiGraphics
+                          key={`point-${index}`}
+                          draw={g => {
+                            g.clear();
+                            g.beginFill(0xFF0000);
+                            g.drawCircle(point.x, point.y, 5);
+                            g.endFill();
+                          }}
+                        />
+                      );
+                    })}
+
+                    {/* Then render selected point on top */}
+                    {(draggedPoint || hoveredPoint) && (
+                      <pixiGraphics
+                        draw={g => {
+                          g.clear();
+                          const selectedPoint = draggedPoint || hoveredPoint;
+                          g.beginFill(0xFF0000);
+                          g.drawCircle(selectedPoint!.x, selectedPoint!.y, 7);
+                          g.beginFill(0xFFFFFF, 0.8);
+                          g.drawCircle(selectedPoint!.x, selectedPoint!.y, 3);
+                          g.endFill();
+                        }}
+                      />
+                    )}
                   </pixiContainer>
                 </Application>
 

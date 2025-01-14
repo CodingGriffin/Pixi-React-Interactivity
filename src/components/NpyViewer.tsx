@@ -348,24 +348,30 @@ export function NpyViewer() {
   }, [texture, isDragging, draggedPoint, points]);
 
   const handlePointerUp = useCallback((event: FederatedPointerEvent) => {
-    if (draggedPoint) {
-      // Update hover state with the final position
-      const x = event.global.x;
-      const y = event.global.y;
+    if (!texture) return;
 
-      // Find point at the current mouse position
-      const pointAtPosition = points.find(point => {
-        const dx = point.x - x;
-        const dy = point.y - y;
-        return Math.sqrt(dx * dx + dy * dy) < 10;
-      });
+    const x = event.global.x;
+    const y = event.global.y;
 
-      setHoveredPoint(pointAtPosition || null);
-    }
-
+    // Reset drag state
     setIsDragging(false);
     setDraggedPoint(null);
-  }, [points, draggedPoint]);
+
+    // Reset hover state based on current mouse position
+    const { x: clampedX, y: clampedY } = clampCoordinates(x, y);
+    const pointAtPosition = points.find(point => {
+      const dx = point.x - clampedX;
+      const dy = point.y - clampedY;
+      return Math.sqrt(dx * dx + dy * dy) < 10;
+    });
+
+    // Only set hover if mouse is actually over a point
+    if (event.global.x === x && event.global.y === y) {
+      setHoveredPoint(pointAtPosition || null);
+    } else {
+      setHoveredPoint(null);
+    }
+  }, [texture, points]);
 
   // Update handleFileSelect to store original data
   const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {

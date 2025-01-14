@@ -722,17 +722,24 @@ export function NpyViewer() {
                         g.drawRect(0, 0, 800, 400);
                         g.endFill();
 
-                        // Draw points
+                        // First draw non-selected points
                         points.forEach(point => {
-                          const isActive = point === draggedPoint || point === hoveredPoint;
-                          g.beginFill(0xFF0000);
-                          g.drawCircle(point.x, point.y, isActive ? 7 : 5);
-                          if (isActive) {
-                            g.beginFill(0xFFFFFF, 0.8);
-                            g.drawCircle(point.x, point.y, 3);
+                          if (point !== draggedPoint && point !== hoveredPoint) {
+                            g.beginFill(0xFF0000);
+                            g.drawCircle(point.x, point.y, 5);
+                            g.endFill();
                           }
-                          g.endFill();
                         });
+
+                        // Then draw the selected point on top
+                        const selectedPoint = draggedPoint || hoveredPoint;
+                        if (selectedPoint) {
+                          g.beginFill(0xFF0000);
+                          g.drawCircle(selectedPoint.x, selectedPoint.y, 7);
+                          g.beginFill(0xFFFFFF, 0.8);
+                          g.drawCircle(selectedPoint.x, selectedPoint.y, 3);
+                          g.endFill();
+                        }
                       }}
                       eventMode="static"
                       onPointerDown={handlePointerDown}
